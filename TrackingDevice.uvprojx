@@ -583,6 +583,16 @@
               <FileType>5</FileType>
               <FilePath>.\Drivers\System\inc\Serial.h</FilePath>
             </File>
+            <File>
+              <FileName>PWM.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Drivers\System\inc\PWM.h</FilePath>
+            </File>
+            <File>
+              <FileName>PWM.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Drivers\System\src\PWM.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
