@@ -2,11 +2,9 @@
 #include "OLED_Font.h"
 
 #define OLED_GPIO_PORT 			GPIOA
-#define OLED_SCL_GPIO_PIN		GPIO_Pin_11
-#define OLED_SDA_GPIO_PIN		GPIO_Pin_12
+#define OLED_SCL_GPIO_PIN		GPIO_Pin_1
+#define OLED_SDA_GPIO_PIN		GPIO_Pin_4
 #define OLED_GPIO_CLK_ENABLE()	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE)
-
-uint8_t Buff[8][128];
 
 void OLED_SCL(uint8_t x)
 {	
