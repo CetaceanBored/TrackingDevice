@@ -1,6 +1,17 @@
 from picamera2 import Picamera2, Preview
 import cv2
 import numpy as np
+import serial
+import time
+
+ser = serial.Serial(
+    port='/dev/serial0',
+    baudrate=9600,
+    parity=serial.PARITY_NONE,
+    stopbits=serial.STOPBITS_ONE,
+    bytesize=serial.EIGHTBITS,
+    timeout=1
+)
 
 cam = Picamera2()
 cam_config = cam.create_preview_configuration(main={"size": (1640, 1232)})
@@ -14,8 +25,14 @@ inner_area = 0
 pencilContour = None
 innerContour = None
 outerContour = None
-redx = None
-redy = None
+redx = 0
+redy = 0
+greenx = 0
+greeny = 0
+RedAreaMax = 10000
+RedAreaMin = 100
+GreenAreaMax = 20000
+GreenAreaMin = 100
 
 while True:
     frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
@@ -27,7 +44,7 @@ while True:
     for contour in contours:
         epsilon = 0.02 * cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, epsilon, True)
-        if len(approx) == 4 and cv2.contourArea(approx) > 100000 and cv2.isContourConvex(approx):                     #PencilContour
+        if len(approx) == 4 and cv2.contourArea(approx) > 100000 and cv2.isContourConvex(approx):                                       #PencilContour
             pencilContour = approx
             x1, y1, w1, h1 = cv2.boundingRect(approx.reshape(4, 2))
             edges = cv2.Canny(blur, 50, 200)
@@ -63,52 +80,87 @@ while True:
                     break
 
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            lower_red1 = np.array([0, 60, 60])
+            lower_red1 = np.array([0, 40, 40])
             upper_red1 = np.array([20, 255, 255])
-            lower_red2 = np.array([150, 60, 60])
+            lower_red2 = np.array([160, 40, 40])
             upper_red2 = np.array([180, 255, 255])
+            lower_green = np.array([35, 40, 40])
+            upper_green = np.array([90, 255, 255])
             mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
             mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+            mask3 = cv2.inRange(hsv, lower_green, upper_green)
             mask = cv2.bitwise_or(mask1, mask2)
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, (5, 5))
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, (5, 5))
+            mask3 = cv2.morphologyEx(mask3, cv2.MORPH_OPEN, (5, 5))
+            mask3 = cv2.morphologyEx(mask3, cv2.MORPH_CLOSE, (5, 5))
             contours4, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours5, _ = cv2.findContours(mask3, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
             max_area = 0
-            
+            max_area2 = 0
+
             for contour in contours4:
                 area = cv2.contourArea(contour)
-                if area > 50 and area < 1000:
+                if area > RedAreaMin and area < RedAreaMax:
                     M = cv2.moments(contour)
                     if M["m00"] != 0:   
                         cx = int(M["m10"] / M["m00"])
                         cy = int(M["m01"] / M["m00"])
-                        if cx >= x1 and cx <= x1 + w1 and cy >= y1 and cy <= y1 + h1:
+                        if cx >= x1 - 20 and cx <= x1 + w1 + 20 and cy >= y1 - 20 and cy <= y1 + h1 + 20:
                             if area > max_area:
                                 max_area = area
                                 redx = cx
-                                redy = cy
-            
-            print(max_area)
+                                redy = cy       
+            # print(max_area)
+
+            for contour in contours5:
+                area = cv2.contourArea(contour)
+                if area > GreenAreaMin and area < GreenAreaMax:
+                    M = cv2.moments(contour)
+                    if M["m00"] != 0:   
+                        cx = int(M["m10"] / M["m00"])
+                        cy = int(M["m01"] / M["m00"])
+                        if cx >= x1 - 20 and cx <= x1 + w1 + 20 and cy >= y1 - 20 and cy <= y1 + h1 + 20:
+                            if area > max_area2:
+                                max_area2 = area
+                                greenx = cx
+                                greeny = cy
+            print(max_area2)
+
+            M = cv2.moments(pencilContour) 
+            originx = int(M["m10"] / M["m00"])
+            originy = int(M["m01"] / M["m00"])
+            cv2.circle(frame, (originx, originy), 5, (255, 255, 0), -1)
+            cv2.putText(frame, f"{originx},{originy}", (originx, originy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
 
             cv2.drawContours(frame, [pencilContour], -1, (255, 0, 0), 2)
             for i, point in enumerate(pencilContour):
                 x, y = point[0]
                 cv2.putText(frame, f"{x},{y}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-            cv2.drawContours(frame, [outerContour], -1, (0, 255, 0), 2)
             if outerContour.any() != None:
+                cv2.drawContours(frame, [outerContour], -1, (0, 255, 0), 2)
                 for i, point in enumerate(outerContour):
                     x, y = point[0]
                     cv2.putText(frame, f"{x},{y}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                cv2.drawContours(frame, [innerContour], -1, (255, 0, 255), 2)
             if innerContour.any() != None:
+                cv2.drawContours(frame, [innerContour], -1, (255, 0, 255), 2)
                 for i, point in enumerate(innerContour):
                     x, y = point[0]
                     cv2.putText(frame, f"{x},{y}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                cv2.circle(frame, (redx, redy), 5, (0, 255, 0), -1)
+            
+            cv2.circle(frame, (redx, redy), 5, (0, 255, 0), -1)
+            cv2.putText(frame, f"{redx},{redy}", (redx, redy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            
+            if greenx and greeny:
+                cv2.circle(frame, (greenx, greeny), 5, (0, 0, 255), -1)
+                cv2.putText(frame, f"{greenx},{greeny}", (greenx, greeny - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
             break
 
     cv2.imshow("Camera", frame)
-    #cv2.imshow("TEST", mask)
+    # cv2.imshow("TEST", mask3)
     if(cv2.waitKey(1) & 0xFF == ord('q')):
         break
 
