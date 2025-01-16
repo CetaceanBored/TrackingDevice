@@ -23,7 +23,6 @@ cv2.namedWindow("Camera", cv2.WINDOW_AUTOSIZE)
 global frame
 global outer_area, inner_area
 outer_area = 0; inner_area = 0
-pencilContour = np.zeros((4,1,2)); innerContour = np.zeros((4,1,2)); outerContour = np.zeros((4,1,2))
 originx = 0; originy = 0
 redx = 0; redy = 0
 greenx = 0; greeny = 0
@@ -38,7 +37,7 @@ class Contour:
     vertices = []
     confirm = False
 
-    def GetVertices(self, R, G, B):
+    def GetVertices(self):
         global frame
         self.vertices.clear()
         for i, point in enumerate(self.rect):
@@ -111,7 +110,7 @@ def DetectOuterContour():
             epsilon = 0.04 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
             area = cv2.contourArea(approx)
-            if len(approx) == 4 and area > 10000 and area > inner_area + 1000 and cv2.isContourConvex(approx):                      #OuterContour
+            if len(approx) == 4 and area > 10000 and area > inner_area + 1000 and cv2.isContourConvex(approx):
                 x0, y0, w0, h0 = cv2.boundingRect(approx.reshape(4, 2))
                 if x0 >= PencilContour.x and x0 + w0 <= PencilContour.x + PencilContour.w and y0 >= PencilContour.y and y0 + h0 <= PencilContour.y + PencilContour.h:
                     rect = approx
@@ -217,7 +216,31 @@ def DetectLaser():
     # print(max_area2)
     # cv2.imshow("TEST", mask)
 
-def LaserMoveIncrease(x, y):
+class PIDcontroller:
+    def __init__(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.previous_error = 0.0
+        self.integral = 0.0
+
+    def compute(self, target, current):
+        error = target - current
+        self.integral += error
+        derivative = error - self.previous_error
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+        self.previous_error = error
+        return output
+
+    def changePID(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        
+pid_x = PIDcontroller(0.03, 0.002, 0.2)
+pid_y = PIDcontroller(0.03, 0.002, 0.2)
+
+def ServoIncrease(x, y):
     global ServoX; global ServoY
     if ServoX + x >= 300 and ServoX + x <= 1200 and ServoY + y >= 300 and ServoY + y <= 1200:
         ServoX = ServoX + x; ServoY = ServoY + y
@@ -227,29 +250,55 @@ def LaserMoveIncrease(x, y):
         signal += '#'
         signal = signal.encode("utf-8")
         ser.write(signal)
-        
-    print(signal)
+        print(signal)
 
-def fun1(x, y):
-    if(redx < x + 2):
-        LaserMoveIncrease(-1, 0)
-    elif(redx > x + 2):
-        LaserMoveIncrease(1, 0)
-    if(redy < y + 2):
-        LaserMoveIncrease(0, -1)
-    elif(redy > y + 2):
-        LaserMoveIncrease(0, 1)
+def MoveNext(nextx, nexty):
+    global redx, redy
+    frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
+    DetectLaser()
+    print(redx, "---", redy)
+    outputX = pid_x.compute(nextx, redx)
+    outputY = pid_y.compute(nexty, redy)
+    print(outputX, "-#-", outputY)
+    ServoIncrease(int(-outputX), int(-outputY))
+
+
+def MoveTo(targetx, targety):
+    global redx, redy
+    distance = np.sqrt((targetx - redx) ** 2 + (targety - redy) ** 2)
+    num_points = max(2, int(distance / 10))
+    x_values = np.linspace(redx, targetx, num_points)
+    y_values = np.linspace(redy, targety, num_points)
+    interpolate = [((int(x)), int(y)) for x, y in zip(x_values, y_values)]
+    for point in interpolate:
+        # cv2.circle(frame, point, 2, (0, 0, 255), 2)
+        print(point)
+        MoveNext(point[0], point[1])
+        
 
 while (DetectPencilContour() == True):
-    _ = _
-while (DetectOuterContour() == True):
-    _ = _
-while (DetectInnerContour() == True):
-    _ = _
+    time.sleep(0.05)
+#while (DetectOuterContour() == True):
+#    time.sleep(0.05)
+#while (DetectInnerContour() == True):
+#    time.sleep(0.05)
 
 while True:
     frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
+    cv2.imshow("Camera", frame)
+    ServoIncrease(0, 0)
+    # time.sleep(0.2)
     DetectLaser()
+
+    
+    
+    M = cv2.moments(PencilContour.rect) 
+    originx = int(M["m10"] / M["m00"])
+    originy = int(M["m01"] / M["m00"])
+
+    if redx and redy:
+        MoveNext(originx, originy)
+        # print("Finish.")
 
     if PencilContour.confirm:
         PencilContour.Draw(0, 0, 255)
@@ -257,10 +306,6 @@ while True:
         OuterContour.Draw(255, 0, 0)
     if InnerContour.confirm:
         InnerContour.Draw(0, 255, 0)
-    
-    M = cv2.moments(PencilContour.rect) 
-    originx = int(M["m10"] / M["m00"])
-    originy = int(M["m01"] / M["m00"])
     cv2.circle(frame, (originx, originy), 5, (255, 255, 0), -1)
     cv2.putText(frame, f"{originx},{originy}", (originx, originy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
     cv2.circle(frame, (redx, redy), 5, (0, 255, 0), -1)
@@ -268,7 +313,7 @@ while True:
     if greenx and greeny:
         cv2.circle(frame, (greenx, greeny), 5, (0, 0, 255), -1)
         cv2.putText(frame, f"{greenx},{greeny}", (greenx, greeny - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-    
+
     cv2.imshow("Camera", frame)
     
     if(cv2.waitKey(1) & 0xFF == ord('q')):
