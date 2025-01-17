@@ -26,10 +26,11 @@ outer_area = 0; inner_area = 0
 originx = 0; originy = 0
 redx = 0; redy = 0
 greenx = 0; greeny = 0
-RedAreaMin = 100; RedAreaMax = 10000
+RedAreaMin = 2; RedAreaMax = 10000
 GreenAreaMin = 100; GreenAreaMax = 20000
 global ServoX, ServoY
 ServoX = 750; ServoY = 750
+global NextPointx; NextPoints = []
 
 class Contour:
     x = 0; y = 0; w = 0; h = 0;
@@ -97,6 +98,7 @@ def DetectPencilContour():
     return flag
                 
 def DetectOuterContour():
+    
     global outer_area, inner_area
     x = [0, 0, 0]; y = [0, 0, 0]; w = [0, 0, 0]; h = [0, 0, 0]
     flag = False
@@ -237,8 +239,8 @@ class PIDcontroller:
         self.Ki = Ki
         self.Kd = Kd
         
-pid_x = PIDcontroller(0.03, 0.002, 0.2)
-pid_y = PIDcontroller(0.03, 0.002, 0.2)
+pid_x = PIDcontroller(0.08, 0.008, 0.17)
+pid_y = PIDcontroller(0.08, 0.008, 0.17)
 
 def ServoIncrease(x, y):
     global ServoX; global ServoY
@@ -251,54 +253,123 @@ def ServoIncrease(x, y):
         signal = signal.encode("utf-8")
         ser.write(signal)
         print(signal)
+        time.sleep(0.05)
 
 def MoveNext(nextx, nexty):
-    global redx, redy
+    global redx, redy, frame
     frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
     DetectLaser()
-    print(redx, "---", redy)
+    # print(redx, "---", redy)
     outputX = pid_x.compute(nextx, redx)
     outputY = pid_y.compute(nexty, redy)
+    outputY -= max((1640.0 - redy) / 1640.0 - 0.2, 0)
     print(outputX, "-#-", outputY)
     ServoIncrease(int(-outputX), int(-outputY))
 
 
 def MoveTo(targetx, targety):
-    global redx, redy
+    global redx, redy, NextPoints
+    NextPoints.clear()
     distance = np.sqrt((targetx - redx) ** 2 + (targety - redy) ** 2)
     num_points = max(2, int(distance / 10))
     x_values = np.linspace(redx, targetx, num_points)
     y_values = np.linspace(redy, targety, num_points)
     interpolate = [((int(x)), int(y)) for x, y in zip(x_values, y_values)]
     for point in interpolate:
-        # cv2.circle(frame, point, 2, (0, 0, 255), 2)
+        cv2.circle(frame, point, 2, (0, 0, 255), 2)
+        NextPoints.append(point)
         print(point)
-        MoveNext(point[0], point[1])
+    for _ in range(5):
+        NextPoints.append((targetx, targety))
+    
+    
         
-
+ServoIncrease(0, 0)
+time.sleep(0.5)
 while (DetectPencilContour() == True):
     time.sleep(0.05)
-#while (DetectOuterContour() == True):
-#    time.sleep(0.05)
-#while (DetectInnerContour() == True):
-#    time.sleep(0.05)
+while (DetectOuterContour() == True):
+    time.sleep(0.05)
+while (DetectInnerContour() == True):
+    time.sleep(0.05)
+PencilContour.x -= 3;
+flag1 = True
 
+def check(x1, y1, x2, y2):
+    if abs(x1 - x2) < 15 and abs(y1 - y2) < 15:
+        return True
+    else:
+        return False
+
+def Func1(x, y):
+    pid_x.changePID(0.08, 0.008, 0.17)
+    pid_y.changePID(0.08, 0.008, 0.17)
+    while(check(redx, redy, x, y) == False):
+        MoveNext(x, y)
+    
+
+def Func2():
+    
+    Func3(PencilContour.x, PencilContour.y)
+    time.sleep(0.5)
+    Func3(PencilContour.x + PencilContour.w - 40, PencilContour.y + 20)
+    time.sleep(0.5)
+    Func3(PencilContour.x + PencilContour.w, PencilContour.y + PencilContour.h)
+    time.sleep(0.5)
+    Func3(PencilContour.x, PencilContour.y + PencilContour.h)
+    time.sleep(0.5)
+    Func3(PencilContour.x, PencilContour.y)
+    time.sleep(0.5)
+    """
+    global ServoX, ServoY
+    ServoX = 807; ServoY = 876
+    ServoIncrease(0, 0)
+    time.sleep(1)
+    ServoX = 701; ServoY = 876
+    ServoIncrease(0, 0)
+    time.sleep(1)
+    ServoX = 701; ServoY = 745
+    ServoIncrease(0, 0)
+    time.sleep(1)
+    ServoX = 806; ServoY = 745
+    ServoIncrease(0, 0)
+    time.sleep(1)
+    ServoX = 807; ServoY = 876
+    ServoIncrease(0, 0)
+    time.sleep(1)
+    """
+def Func3(x, y):
+    global ServoX, ServoY, NextPoints
+    pid_x.changePID(0.09, 0.0, 0.0)
+    pid_y.changePID(0.09, 0.0, 0.0)
+    MoveTo(x, y)
+    for point in NextPoints:
+        MoveNext(point[0], point[1])
+        if(check(redx, redy, x, y) == True):
+            break
+        time.sleep(0.02)
+    print("Done")
+    
 while True:
     frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
     cv2.imshow("Camera", frame)
-    ServoIncrease(0, 0)
     # time.sleep(0.2)
     DetectLaser()
 
-    
     
     M = cv2.moments(PencilContour.rect) 
     originx = int(M["m10"] / M["m00"])
     originy = int(M["m01"] / M["m00"])
 
+    
     if redx and redy:
-        MoveNext(originx, originy)
-        # print("Finish.")
+        if flag1:
+            # Func3(originx, originy)
+            # time.sleep(0.5)
+            
+            Func2()
+            time.sleep(1)
+            flag1 = False
 
     if PencilContour.confirm:
         PencilContour.Draw(0, 0, 255)
@@ -313,6 +384,9 @@ while True:
     if greenx and greeny:
         cv2.circle(frame, (greenx, greeny), 5, (0, 0, 255), -1)
         cv2.putText(frame, f"{greenx},{greeny}", (greenx, greeny - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+    for point in NextPoints:
+        cv2.circle(frame, (point[0], point[1]), 5, (255, 255, 0), -1)
 
     cv2.imshow("Camera", frame)
     
