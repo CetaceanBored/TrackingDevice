@@ -1,6 +1,6 @@
 from picamera2 import Picamera2, Preview
 import cv2
-import numpy as np
+import numpy as np	
 import serial
 import time
 
@@ -17,8 +17,6 @@ cam = Picamera2()
 cam_config = cam.create_preview_configuration(main={"size": (1640, 1232)})
 cam.configure(cam_config)
 cam.start()
-
-cv2.namedWindow("Camera", cv2.WINDOW_AUTOSIZE)
 
 global frame
 global outer_area, inner_area
@@ -111,7 +109,7 @@ def DetectOuterContour():
             epsilon = 0.04 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
             area = cv2.contourArea(approx)
-            if len(approx) == 4 and area > 45000 and area > inner_area + 1000 and cv2.isContourConvex(approx):
+            if len(approx) == 4 and area > 50000 and area > inner_area + 1000 and cv2.isContourConvex(approx):
                 x0, y0, w0, h0 = cv2.boundingRect(approx.reshape(4, 2))
                 if x0 >= PencilContour.x and x0 + w0 <= PencilContour.x + PencilContour.w and y0 >= PencilContour.y and y0 + h0 <= PencilContour.y + PencilContour.h:
                     rect = approx
@@ -243,7 +241,7 @@ pid_y = PIDcontroller(0.09, 0.0, 0.0)
 
 def ServoIncrease(x, y):
     global ServoX; global ServoY
-    if ServoX + x >= 300 and ServoX + x <= 1200 and ServoY + y >= 300 and ServoY + y <= 1200:
+    if ServoX + x >= 500 and ServoX + x <= 1000 and ServoY + y >= 500 and ServoY + y <= 1000:
         ServoX = ServoX + x; ServoY = ServoY + y
         signal = "@"
         signal += str(ServoY).zfill(4)
@@ -252,7 +250,7 @@ def ServoIncrease(x, y):
         signal = signal.encode("utf-8")
         ser.write(signal)
         print(signal)
-        time.sleep(0.05)
+        time.sleep(0.03)
 
 def MoveNext(nextx, nexty):
     global frame
@@ -263,7 +261,6 @@ def MoveNext(nextx, nexty):
     outputY -= max((1640.0 - redy) / 1640.0 - 0.2, 0)
     print(outputX, "-#-", outputY)
     ServoIncrease(int(-outputX), int(-outputY))
-
 
 def MoveTo(targetx, targety, num = 10):
     NextPoints.clear()
@@ -276,7 +273,7 @@ def MoveTo(targetx, targety, num = 10):
         cv2.circle(frame, point, 2, (0, 0, 255), 2)
         NextPoints.append(point)
         print(point)
-    for _ in range(3):
+    for _ in range(2):
         NextPoints.append((targetx, targety))
         
 ServoIncrease(0, 0)
@@ -295,7 +292,7 @@ originy = int(M["m01"] / M["m00"])
 flag1 = True
 
 def check(x1, y1, x2, y2):
-    if abs(x1 - x2) < 10 and abs(y1 - y2) < 10:
+    if abs(x1 - x2) < 3 and abs(y1 - y2) < 3:
         return True
     else:
         return False
@@ -332,6 +329,8 @@ def correction():
     return (dx, dy)
 
 def Show():
+    global frame, NextPoints
+
     if PencilContour.confirm:
         PencilContour.Draw(0, 0, 255)
     if OuterContour.confirm:
@@ -346,8 +345,8 @@ def Show():
         cv2.circle(frame, (greenx, greeny), 5, (0, 0, 255), -1)
         cv2.putText(frame, f"{greenx},{greeny}", (greenx, greeny - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
-    for point in NextPoints:
-        cv2.circle(frame, (point[0], point[1]), 5, (255, 255, 0), -1)
+    #for point in NextPoints:
+    #    cv2.circle(frame, (point[0], point[1]), 5, (255, 255, 0), -1)
 
     if (check_in_rect(OuterContour)):
         if (check_in_rect(InnerContour)):
@@ -360,49 +359,36 @@ def Show():
     cor = correction()
     cv2.putText(frame, f"{cor[0]},{cor[1]}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2)
 
+    cv2.namedWindow("Camera", cv2.WINDOW_AUTOSIZE)
     cv2.imshow("Camera", frame)
 
-def Move(x, y, flag=False):
-    MoveTo(x, y, 5)
-    d = 5
+def Move(x, y, flag=False, num=10):
+    MoveTo(x, y, num)
     for point in NextPoints:
         MoveNext(point[0], point[1])
         if(flag == True):
-            cor = correction()
-            if cor[0] < 0:
-                if cor[0] < -d:
-                    ServoIncrease(2, 0)
-                else:
+            for _ in range(1):
+                cor = correction()
+                if cor[0] < 0:
                     ServoIncrease(1, 0)
-            if cor[1] < 0:
-                if cor[1] < -d:
-                    ServoIncrease(0, 2)
-                else:
+                if cor[1] < 0:
                     ServoIncrease(0, 1)
-            if cor[0] > 0:
-                if cor[0] > d:
-                    ServoIncrease(-2, 0)
-                else:
+                if cor[0] > 0:
                     ServoIncrease(-1, 0)
-            if cor[1] > 0:
-                if cor[1] > d:
-                    ServoIncrease(0, -2)
-                else:
+                if cor[1] > 0:
                     ServoIncrease(0, -1)
-            
         if(check(redx, redy, x, y) == True):
             break
-        time.sleep(0.02)
 
 
 def Func1():
     Move(PencilContour.x, PencilContour.y + 10)
     time.sleep(0.5)
-    Move(PencilContour.x + PencilContour.w - 40, PencilContour.y + 10)
+    Move(PencilContour.x + PencilContour.w - 30, PencilContour.y)
     time.sleep(0.5)
     Move(PencilContour.x + PencilContour.w, PencilContour.y + PencilContour.h)
     time.sleep(0.5)
-    Move(PencilContour.x, PencilContour.y + PencilContour.h)
+    Move(PencilContour.x, PencilContour.y + 10 + PencilContour.h)
     time.sleep(0.5)
     Move(PencilContour.x, PencilContour.y + 10)
     time.sleep(0.5)
@@ -415,16 +401,20 @@ def Func2():
     xy, wh, angle = cv2.minAreaRect(OuterContour.rect)
     rotated_rect = (xy, wh, angle)
     outer_box = cv2.boxPoints(rotated_rect)
-    Move((inner_box[0][0] + outer_box[0][0]) / 2.0, (inner_box[0][1] + outer_box[0][1]) / 2.0, False)
-    time.sleep(0.5)
-    Move((inner_box[1][0] + outer_box[1][0]) / 2.0, (inner_box[1][1] + outer_box[1][1]) / 2.0, True)
-    time.sleep(0.5)
-    Move((inner_box[2][0] + outer_box[2][0]) / 2.0, (inner_box[2][1] + outer_box[2][1]) / 2.0, True)
-    time.sleep(0.5)
-    Move((inner_box[3][0] + outer_box[3][0]) / 2.0, (inner_box[3][1] + outer_box[3][1]) / 2.0, True)
-    time.sleep(0.5)
-    Move((inner_box[0][0] + outer_box[0][0]) / 2.0, (inner_box[0][1] + outer_box[0][1]) / 2.0, True)
-    time.sleep(0.5)
+    Move(inner_box[0][0], inner_box[0][1], False, 3)
+    time.sleep(1)
+    pid_x.changePID(0.05, 0, 0)
+    pid_y.changePID(0.05, 0, 0)
+    Move(inner_box[1][0], inner_box[1][1], True, 3)
+    time.sleep(0.1)
+    Move(inner_box[2][0], inner_box[2][1], True, 3)
+    time.sleep(0.1)
+    Move(outer_box[3][0], outer_box[3][1], True, 3)
+    time.sleep(0.1)
+    Move(outer_box[0][0], outer_box[0][1], True, 3)
+    time.sleep(0.1)
+    pid_x.changePID(0.09, 0, 0)
+    pid_y.changePID(0.09, 0, 0)
 
 while True:
     frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
@@ -433,6 +423,8 @@ while True:
      
     if redx and redy:
         if flag1:
+            Func1()
+            time.sleep(1)
             Func2()
             time.sleep(1)
             Move(originx, originy)
