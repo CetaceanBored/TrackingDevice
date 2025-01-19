@@ -1,8 +1,8 @@
-#include "stm32f10x.h"
 #include "Delay.h"
 #include "PWM.h"
 #include "Serial.h"
 #include "OLED.h"
+#include "Key.h"
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -13,6 +13,7 @@ int main(void)
 	OLED_Init();
 	Serial_UASRT2_init();
 	PWM_Init();
+	Key_Init();
 	while (1)
 	{
 		OLED_ShowString(6, 2, "Testing...", 6);
@@ -29,6 +30,11 @@ int main(void)
 			PWM_Set(1, val1);
 			PWM_Set(2, val2);
 			Serial_RxFlag = 0;
-		}	
+		}
+		uint8_t KeyValue = Key();
+		if (KeyValue == 1) Serial_SendByte('A');
+		if (KeyValue == 2) Serial_SendByte('B');
+		if (KeyValue == 3) Serial_SendByte('C');
+		if (KeyValue == 4) Serial_SendByte('D');
 	}
 }
