@@ -30,6 +30,8 @@ global ServoX, ServoY
 ServoX = 750; ServoY = 750
 global NextPointx; NextPoints = []
 global key, stop, reset; stop = 0; reset = 0; key = ''
+global closest_point 
+closest_point = (0, 0)
 
 class Contour:
     x = 0; y = 0; w = 0; h = 0
@@ -274,11 +276,11 @@ def MoveTo(targetx, targety, num = 10):
         cv2.circle(frame, point, 2, (0, 0, 255), 2)
         NextPoints.append(point)
         print(point)
-    for _ in range(2):
-        NextPoints.append((targetx, targety))
+    #for _ in range(1):
+    NextPoints.append((targetx, targety))
         
 ServoIncrease(0, 0)
-time.sleep(0.5)
+time.sleep(0.2)
 while (DetectPencilContour() == True):
     time.sleep(0.05)
 while (DetectOuterContour() == True):
@@ -308,11 +310,36 @@ def check_in_rect(contour=Contour()):
         return False
 
 def find_closest(contour):
-    contour = np.array(contour, dtype=np.float32)
-    contour = contour.reshape(-1, 1, 2)
-    distances = [np.linalg.norm((redx, redy) - c[0]) for c in contour]
-    closest_idx = np.argmin(distances)
-    return contour[closest_idx][0]
+    global closest_point    
+    xy, wh, angle = cv2.minAreaRect(contour)
+    rotated_rect = (xy, wh, angle)
+    box = cv2.boxPoints(rotated_rect)
+    box = np.array(box, dtype=np.float32)
+    dist = float('inf')
+    nearest_point_on_edge = None
+
+    for i in range(len(box)):
+        p1 = box[i]
+        p2 = box[(i + 1) % len(box)]
+        line_vec = p2 - p1
+        point_vec = np.array((redx, redy)) - p1
+        line_len = np.linalg.norm(line_vec)
+        line_unit_vec = line_vec / line_len
+        proj_length = np.dot(point_vec, line_unit_vec)
+
+        if proj_length < 0:
+            closest_point = p1
+        elif proj_length > line_len:
+            closest_point = p2
+        else:
+            closest_point = p1 + proj_length * line_unit_vec
+
+        curr_dist = np.linalg.norm(np.array((redx, redy)) - closest_point)
+        if curr_dist < dist:
+            dist = curr_dist
+            nearest_point_on_edge = closest_point
+            
+    return nearest_point_on_edge
 
 def correction():
     if (check_in_rect(OuterContour)):
@@ -325,12 +352,15 @@ def correction():
     else:
         print("outside")
         closest_point = find_closest(OuterContour.rect)
-    dx = closest_point[0] - redx
-    dy = closest_point[1] - redy
+    dx = int(closest_point[0]) - redx # type: ignore
+    dy = int(closest_point[1]) - redy # type: ignore
+    cv2.circle(frame, (int(closest_point[0]), int(closest_point[1])), 5, (0, 255, 0), -1) # type: ignore
     return (dx, dy)
 
 def Show():
     global frame, NextPoints
+    global closest_point
+
 
     if PencilContour.confirm:
         PencilContour.Draw(0, 0, 255)
@@ -364,20 +394,20 @@ def Show():
 
 def Move(x, y, flag=False, num=10):
     global key, stop, reset;
+    d = 3
     MoveTo(x, y, num)
     for point in NextPoints:
         MoveNext(point[0], point[1])
         if(flag == True):
-            for _ in range(1):
-                cor = correction()
-                if cor[0] < 0:
-                    ServoIncrease(1, 0)
-                if cor[1] < 0:
-                    ServoIncrease(0, 1)
-                if cor[0] > 0:
-                    ServoIncrease(-1, 0)
-                if cor[1] > 0:
-                    ServoIncrease(0, -1)
+            cor = correction()
+            if cor[0] < -d:
+                ServoIncrease(1, 0)
+            if cor[1] < -d:
+                ServoIncrease(0, 1)
+            if cor[0] > d:
+                ServoIncrease(-1, 0)
+            if cor[1] > d:
+                ServoIncrease(0, -1)
         if(check(redx, redy, x, y) == True):
             break
         
@@ -394,8 +424,7 @@ def Move(x, y, flag=False, num=10):
                 key = ser.readline().decode('utf-8').strip()
             if key == 'D':
                 stop = 0
-            
-            time.sleep(0.01)  
+             
 
 
 def Func1():
@@ -421,8 +450,7 @@ def Func1():
     Move(PencilContour.x, PencilContour.y + 10)
     if(reset == 1):
         return
-    time.sleep(0.5)
-    
+    time.sleep(0.5) 
 
 def Func2():
     global reset, stop
@@ -434,28 +462,28 @@ def Func2():
     xy, wh, angle = cv2.minAreaRect(OuterContour.rect)
     rotated_rect = (xy, wh, angle)
     outer_box = cv2.boxPoints(rotated_rect)
-    Move(inner_box[0][0], inner_box[0][1], False, 3)
+    Move(inner_box[0][0], inner_box[0][1], False, 10)
     if(reset == 1):
         return
     time.sleep(1)
-    pid_x.changePID(0.05, 0, 0)
-    pid_y.changePID(0.05, 0, 0)
-    Move(inner_box[1][0] + 10, inner_box[1][1] + 10, True, 3)
+    pid_x.changePID(0.07, 0, 0)
+    pid_y.changePID(0.07, 0, 0)
+    Move(inner_box[1][0], inner_box[1][1], True, 4)
     if(reset == 1):
         return
-    time.sleep(0.1)
-    Move(inner_box[2][0], inner_box[2][1], True, 3)
+    time.sleep(0.05)
+    Move(inner_box[2][0] + 10, inner_box[2][1], True, 4)
     if(reset == 1):
         return
-    time.sleep(0.1)
-    Move(outer_box[3][0], outer_box[3][1], True, 3)
+    time.sleep(0.05)
+    Move(outer_box[3][0], outer_box[3][1], True, 4)
     if(reset == 1):
         return
-    time.sleep(0.1)
-    Move(outer_box[0][0], outer_box[0][1], True, 3)
+    time.sleep(0.05)
+    Move(outer_box[0][0], outer_box[0][1], True, 4)
     if(reset == 1):
         return
-    time.sleep(0.1)
+    time.sleep(0.05)
     pid_x.changePID(0.09, 0, 0)
     pid_y.changePID(0.09, 0, 0)
 
@@ -465,6 +493,12 @@ while True:
     DetectLaser()
     
     if redx and redy:
+        '''
+        if flag1:
+            Func2()
+            time.sleep(2)
+            flag1 = False
+        '''
         if reset == 1:
             reset = 0; stop = 0
             pid_x.changePID(0.09, 0, 0)
@@ -496,7 +530,7 @@ while True:
             flag1 = False
         """
 
-    # Show()
+    Show()
     if(cv2.waitKey(1) & 0xFF == ord('q')):
         break
 
