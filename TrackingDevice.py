@@ -29,6 +29,7 @@ GreenAreaMin = 100; GreenAreaMax = 20000
 global ServoX, ServoY
 ServoX = 750; ServoY = 750
 global NextPointx; NextPoints = []
+global key, stop, reset; stop = 0; reset = 0; key = ''
 
 class Contour:
     x = 0; y = 0; w = 0; h = 0
@@ -344,7 +345,6 @@ def Show():
     if greenx and greeny:
         cv2.circle(frame, (greenx, greeny), 5, (0, 0, 255), -1)
         cv2.putText(frame, f"{greenx},{greeny}", (greenx, greeny - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-
     #for point in NextPoints:
     #    cv2.circle(frame, (point[0], point[1]), 5, (255, 255, 0), -1)
 
@@ -363,6 +363,7 @@ def Show():
     cv2.imshow("Camera", frame)
 
 def Move(x, y, flag=False, num=10):
+    global key, stop, reset;
     MoveTo(x, y, num)
     for point in NextPoints:
         MoveNext(point[0], point[1])
@@ -379,22 +380,54 @@ def Move(x, y, flag=False, num=10):
                     ServoIncrease(0, -1)
         if(check(redx, redy, x, y) == True):
             break
+        
+        if ser.in_waiting > 0:
+            key = ser.readline().decode('utf-8').strip()
+            if key == 'D' or key == 'A':
+                stop = 1
+        while stop == 1:
+            if key == 'A':
+                stop = 0; reset = 1;
+                NextPoints.clear()
+                return
+            if ser.in_waiting > 0:
+                key = ser.readline().decode('utf-8').strip()
+            if key == 'D':
+                stop = 0
+            
+            time.sleep(0.01)  
 
 
 def Func1():
+    global reset, stop
+    pid_x.changePID(0.09, 0, 0)
+    pid_y.changePID(0.09, 0, 0)
     Move(PencilContour.x, PencilContour.y + 10)
     time.sleep(0.5)
+    if(reset == 1):
+        return
     Move(PencilContour.x + PencilContour.w - 30, PencilContour.y)
+    if(reset == 1):
+        return
     time.sleep(0.5)
     Move(PencilContour.x + PencilContour.w, PencilContour.y + PencilContour.h)
+    if(reset == 1):
+        return
     time.sleep(0.5)
     Move(PencilContour.x, PencilContour.y + 10 + PencilContour.h)
+    if(reset == 1):
+        return
     time.sleep(0.5)
     Move(PencilContour.x, PencilContour.y + 10)
+    if(reset == 1):
+        return
     time.sleep(0.5)
     
 
 def Func2():
+    global reset, stop
+    pid_x.changePID(0.09, 0, 0)
+    pid_y.changePID(0.09, 0, 0)
     xy, wh, angle = cv2.minAreaRect(InnerContour.rect)
     rotated_rect = (xy, wh, angle)
     inner_box = cv2.boxPoints(rotated_rect)
@@ -402,16 +435,26 @@ def Func2():
     rotated_rect = (xy, wh, angle)
     outer_box = cv2.boxPoints(rotated_rect)
     Move(inner_box[0][0], inner_box[0][1], False, 3)
+    if(reset == 1):
+        return
     time.sleep(1)
     pid_x.changePID(0.05, 0, 0)
     pid_y.changePID(0.05, 0, 0)
-    Move(inner_box[1][0], inner_box[1][1], True, 3)
+    Move(inner_box[1][0] + 10, inner_box[1][1] + 10, True, 3)
+    if(reset == 1):
+        return
     time.sleep(0.1)
     Move(inner_box[2][0], inner_box[2][1], True, 3)
+    if(reset == 1):
+        return
     time.sleep(0.1)
     Move(outer_box[3][0], outer_box[3][1], True, 3)
+    if(reset == 1):
+        return
     time.sleep(0.1)
     Move(outer_box[0][0], outer_box[0][1], True, 3)
+    if(reset == 1):
+        return
     time.sleep(0.1)
     pid_x.changePID(0.09, 0, 0)
     pid_y.changePID(0.09, 0, 0)
@@ -420,8 +463,29 @@ while True:
     frame = cv2.cvtColor(cam.capture_array(), cv2.COLOR_RGB2BGR)
     cv2.imshow("Camera", frame)
     DetectLaser()
-     
+    
     if redx and redy:
+        if reset == 1:
+            reset = 0; stop = 0
+            pid_x.changePID(0.09, 0, 0)
+            pid_y.changePID(0.09, 0, 0)
+            Move(originx, originy)
+        if ser.in_waiting > 0:
+            key = ser.readline().decode('utf-8').strip()
+        if key == 'A':
+            Move(originx, originy)
+            time.sleep(1)
+            key = ''
+        if key == 'B':
+            Func1()
+            time.sleep(1)
+            key = ''
+        if key == 'C':
+            Func2()
+            time.sleep(1)
+            key = ''
+
+        """
         if flag1:
             Func1()
             time.sleep(1)
@@ -430,8 +494,9 @@ while True:
             Move(originx, originy)
             time.sleep(1)
             flag1 = False
+        """
 
-    Show()
+    # Show()
     if(cv2.waitKey(1) & 0xFF == ord('q')):
         break
 
