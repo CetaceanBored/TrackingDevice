@@ -416,38 +416,38 @@ def Move(x, y, flag=False, num=10):
             if key == 'D' or key == 'A':
                 stop = 1
         while stop == 1:
+            key = '_'
+            if ser.in_waiting > 0:
+                key = ser.readline().decode('utf-8').strip()
             if key == 'A':
                 stop = 0; reset = 1;
                 NextPoints.clear()
                 return
-            if ser.in_waiting > 0:
-                key = ser.readline().decode('utf-8').strip()
             if key == 'D':
                 stop = 0
              
-
 
 def Func1():
     global reset, stop
     pid_x.changePID(0.09, 0, 0)
     pid_y.changePID(0.09, 0, 0)
-    Move(PencilContour.x, PencilContour.y + 10)
+    Move(PencilContour.x, PencilContour.y)
     time.sleep(0.5)
     if(reset == 1):
         return
-    Move(PencilContour.x + PencilContour.w - 30, PencilContour.y)
+    Move(PencilContour.x + PencilContour.w - 20, PencilContour.y + 30)
     if(reset == 1):
         return
     time.sleep(0.5)
-    Move(PencilContour.x + PencilContour.w, PencilContour.y + PencilContour.h)
+    Move(PencilContour.x + PencilContour.w, PencilContour.y + PencilContour.h + 10)
     if(reset == 1):
         return
     time.sleep(0.5)
-    Move(PencilContour.x, PencilContour.y + 10 + PencilContour.h)
+    Move(PencilContour.x, PencilContour.y + PencilContour.h)
     if(reset == 1):
         return
     time.sleep(0.5)
-    Move(PencilContour.x, PencilContour.y + 10)
+    Move(PencilContour.x, PencilContour.y)
     if(reset == 1):
         return
     time.sleep(0.5) 
